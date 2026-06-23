@@ -1,0 +1,4 @@
+LOAD mattermost.yaml
+LOAD mattermost-stack.yaml
+
+ENTRY mattermost/stack-local
