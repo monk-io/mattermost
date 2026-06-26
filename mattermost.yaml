@@ -1,0 +1,104 @@
+namespace: mattermost
+
+base:
+  defines: runnable
+  metadata:
+    name: Mattermost Base
+    description: |
+      Reusable Mattermost collaboration server component using the public
+      mattermost/mattermost-team-edition Docker image. It expects an inheriting
+      template to provide a PostgreSQL-compatible service through the `postgres`
+      connection. Compatible backing packages include self-hosted postgresql/db
+      or a hosted PostgreSQL package such as Neon.
+    tags: mattermost, collaboration, chat, component
+    website: https://mattermost.com/
+    source: https://github.com/mattermost/mattermost
+    publisher: monk.io
+    private: false
+  variables:
+    mattermost-image-repository:
+      type: string
+      value: mattermost/mattermost-team-edition
+      description: Public Mattermost Team Edition image repository. This ARM-compatible repository is used for local verification; amd64 production deployments may override to mattermost/mattermost-team-edition.
+    mattermost-image-tag:
+      type: string
+      value: latest
+      description: Public Mattermost image tag to run.
+    http-port:
+      type: int
+      value: 8065
+      description: Mattermost HTTP port inside the container.
+    timezone:
+      type: string
+      env: TZ
+      value: UTC
+      description: Timezone used by the Mattermost container.
+    site-url:
+      type: string
+      env: MM_SERVICESETTINGS_SITEURL
+      value: http://localhost:8065
+      description: Public URL Mattermost uses when generating links and redirects.
+    sql-driver:
+      type: string
+      env: MM_SQLSETTINGS_DRIVERNAME
+      value: postgres
+      description: Mattermost SQL driver name.
+    postgres-host:
+      type: string
+      value: ""
+      description: PostgreSQL hostname supplied by an inheriting template from its database connection.
+    postgres-port:
+      type: int
+      value: 5432
+      description: PostgreSQL port supplied by an inheriting template from its database connection.
+    postgres-database:
+      type: string
+      value: mattermost
+      description: PostgreSQL database name supplied by the inheriting template.
+    postgres-user:
+      type: string
+      value: mattermost
+      description: PostgreSQL username supplied by the inheriting template.
+    postgres-password:
+      type: string
+      value: ""
+      description: Sensitive PostgreSQL password. Inheriting templates must set this, usually with secret("mattermost-postgres-password") using a plain secret name.
+    sql-datasource:
+      type: string
+      env: MM_SQLSETTINGS_DATASOURCE
+      value: <- `postgres://${postgres-user}:${postgres-password}@${postgres-host}:${postgres-port}/${postgres-database}?sslmode=disable&connect_timeout=10`
+      description: PostgreSQL datasource generated from the connected database service.
+    bleve-index-dir:
+      type: string
+      env: MM_BLEVESETTINGS_INDEXDIR
+      value: /var/lib/mattermost/bleve-indexes
+      description: Mattermost local Bleve search index directory.
+    mattermost-volume-name:
+      type: string
+      value: mattermost
+      description: Monk volume subdirectory used for Mattermost persistent data.
+  containers:
+    mattermost:
+      image: <- $mattermost-image-repository
+      image-tag: <- $mattermost-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/${mattermost-volume-name}/data:/var/lib/mattermost/data`
+        - <- `${volume-path}/${mattermost-volume-name}/config:/var/lib/mattermost/config`
+        - <- `${volume-path}/${mattermost-volume-name}/logs:/var/lib/mattermost/logs`
+        - <- `${volume-path}/${mattermost-volume-name}/plugins:/var/lib/mattermost/plugins`
+        - <- `${volume-path}/${mattermost-volume-name}/client-plugins:/var/lib/mattermost/client/plugins`
+        - <- `${volume-path}/${mattermost-volume-name}/bleve-indexes:/var/lib/mattermost/bleve-indexes`
+  services:
+    http:
+      container: mattermost
+      port: <- $http-port
+      protocol: tcp
+      publish: false
+      description: Mattermost HTTP endpoint for web, API, and WebSocket traffic.
+  checks:
+    readiness:
+      code: http-get-service("mattermost/base", "http", "/api/v4/system/ping") get-member("status") 200 equal?
+      period: 10
+      initialDelay: 30
+      attempts: 60

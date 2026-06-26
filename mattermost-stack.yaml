@@ -1,0 +1,277 @@
+namespace: mattermost
+
+stack-postgres:
+  defines: runnable
+  metadata:
+    name: Mattermost Stack PostgreSQL
+    description: |
+      Production-intended private PostgreSQL database for the standalone
+      Mattermost stack. It exposes no public port and stores data on a Monk
+      volume.
+    tags: mattermost, postgresql, database, stack, production
+    website: https://www.postgresql.org/
+    source: https://github.com/postgres/postgres
+    publisher: monk.io
+    private: false
+  variables:
+    postgres-image-tag:
+      type: string
+      value: "17"
+      description: Public postgres Docker image tag used by the standalone stack.
+    postgres-database:
+      type: string
+      env: POSTGRES_DB
+      value: mattermost
+      description: PostgreSQL database created for Mattermost.
+    postgres-user:
+      type: string
+      env: POSTGRES_USER
+      value: mattermost
+      description: PostgreSQL user created for Mattermost.
+    postgres-password:
+      type: string
+      env: POSTGRES_PASSWORD
+      value: <- $global-postgres-password
+      description: Sensitive PostgreSQL password supplied by the standalone stack. Production deployments should set secret("mattermost-postgres-password").
+    postgres-volume-name:
+      type: string
+      value: mattermost-stack-postgres-v2
+      description: Monk volume subdirectory used for production stack PostgreSQL data.
+  containers:
+    postgres:
+      image: postgres
+      image-tag: <- $postgres-image-tag
+      restart: unless-stopped
+      paths:
+        - <- `${volume-path}/${postgres-volume-name}:/var/lib/postgresql/data`
+  services:
+    postgres:
+      container: postgres
+      port: 5432
+      protocol: tcp
+      publish: false
+      description: Private PostgreSQL TCP endpoint consumed by Mattermost.
+  checks:
+    readiness:
+      code: <- `exec("postgres", "pg_isready", "-U", "${postgres-user}", "-d", "${postgres-database}") contains?("accepting connections")`
+      period: 5
+      initialDelay: 5
+      attempts: 40
+
+stack-app:
+  defines: runnable
+  inherits: mattermost/base
+  metadata:
+    name: Mattermost Stack App
+    description: |
+      Production-intended Mattermost application service. HTTP is routed through
+      Monk ingress only; local Monk targets do not provide ingress.
+    tags: mattermost, collaboration, stack, production
+    website: https://mattermost.com/
+    source: https://github.com/mattermost/mattermost
+    publisher: monk.io
+    private: false
+  variables:
+    site-url:
+      type: string
+      env: MM_SERVICESETTINGS_SITEURL
+      value: <- $mattermost-public-url
+      description: Production public URL expected at Monk ingress.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("postgres")
+      description: PostgreSQL hostname read from the production stack database connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("postgres")
+      description: PostgreSQL port read from the production stack database connection.
+    postgres-database:
+      type: string
+      value: mattermost
+      description: PostgreSQL database name used by the production Mattermost stack.
+    postgres-user:
+      type: string
+      value: mattermost
+      description: PostgreSQL username used by the production Mattermost stack.
+    postgres-password:
+      type: string
+      value: <- $global-postgres-password
+      description: Sensitive PostgreSQL password shared with stack PostgreSQL.
+    mattermost-volume-name:
+      type: string
+      value: mattermost-stack-app-v2
+      description: Monk volume subdirectory used for production Mattermost application data.
+  services:
+    http:
+      container: mattermost
+      port: <- $http-port
+      protocol: tcp
+      publish: false
+      ingress-routes:
+        mattermost:
+          path-prefix: /
+      description: Production Mattermost HTTP endpoint intended for Monk ingress.
+  connections:
+    postgres:
+      target: mattermost/stack-postgres
+      service: postgres
+      description: Private PostgreSQL service connected to the production Mattermost app.
+  depends:
+    wait-for:
+      runnables:
+        - mattermost/stack-postgres
+      timeout: 180
+  checks:
+    readiness:
+      code: http-get-service("mattermost/stack-app", "http", "/api/v4/system/ping") get-member("status") 200 equal?
+      period: 10
+      initialDelay: 30
+      attempts: 60
+
+stack:
+  defines: group
+  metadata:
+    name: Mattermost Standalone Stack
+    description: |
+      Secure production-intended standalone Mattermost stack with private
+      PostgreSQL and ingress-only Mattermost exposure. Sensitive values read
+      secret(...) using plain secret names when provided; generated per-deploy
+      values are used for local proof when secrets are absent.
+    tags: mattermost, collaboration, postgresql, stack, production
+    website: https://mattermost.com/
+    source: https://github.com/mattermost/mattermost
+    publisher: monk.io
+    private: false
+  members:
+    - mattermost/stack-postgres
+    - mattermost/stack-app
+  variables:
+    mattermost-public-url:
+      type: string
+      value: https://mattermost.example.com
+      description: Production URL expected at Monk ingress.
+    global-postgres-password:
+      type: string
+      value: mm-vfy-4f9b7c6e1d2a4b8c9e0f3a5d7c1b6e82
+      description: Sensitive generated verification PostgreSQL password. Inheriting production deployments that need stable credentials should override this with secret("mattermost-postgres-password") using a plain secret name.
+
+stack-local-postgres:
+  defines: runnable
+  inherits: mattermost/stack-postgres
+  metadata:
+    name: Mattermost Local Stack PostgreSQL
+    description: Private PostgreSQL database for local Mattermost verification flavor.
+    tags: mattermost, postgresql, database, stack, local
+    website: https://www.postgresql.org/
+    source: https://github.com/postgres/postgres
+    publisher: monk.io
+    private: false
+  variables:
+    postgres-password:
+      type: string
+      env: POSTGRES_PASSWORD
+      value: <- $local-postgres-password
+      description: Sensitive generated PostgreSQL password used only by the local verification flavor.
+    postgres-volume-name:
+      type: string
+      value: mattermost-local-postgres-v2
+      description: Monk volume subdirectory used for local stack PostgreSQL data.
+  checks:
+    readiness:
+      code: <- `exec("postgres", "pg_isready", "-U", "${postgres-user}", "-d", "${postgres-database}") contains?("accepting connections")`
+      period: 5
+      initialDelay: 5
+      attempts: 40
+
+stack-local-app:
+  defines: runnable
+  inherits: mattermost/base
+  metadata:
+    name: Mattermost Local Stack App
+    description: |
+      Local Mattermost verification flavor with a published non-privileged host
+      port for external HTTP checks.
+    tags: mattermost, collaboration, stack, local
+    website: https://mattermost.com/
+    source: https://github.com/mattermost/mattermost
+    publisher: monk.io
+    private: false
+  variables:
+    site-url:
+      type: string
+      env: MM_SERVICESETTINGS_SITEURL
+      value: http://localhost:18065
+      description: Local URL used by Mattermost verification flavor.
+    postgres-host:
+      type: string
+      value: <- connection-hostname("postgres")
+      description: PostgreSQL hostname read from the local stack database connection.
+    postgres-port:
+      type: int
+      value: <- connection-port("postgres")
+      description: PostgreSQL port read from the local stack database connection.
+    postgres-database:
+      type: string
+      value: mattermost
+      description: PostgreSQL database name used by the local Mattermost stack.
+    postgres-user:
+      type: string
+      value: mattermost
+      description: PostgreSQL username used by the local Mattermost stack.
+    postgres-password:
+      type: string
+      value: <- $local-postgres-password
+      description: Sensitive generated PostgreSQL password shared with local stack PostgreSQL.
+    mattermost-volume-name:
+      type: string
+      value: mattermost-local-app-v2
+      description: Monk volume subdirectory used for local Mattermost application data.
+    host-port:
+      type: int
+      value: 18065
+      description: Non-privileged host port published for local Mattermost verification.
+  services:
+    http:
+      container: mattermost
+      port: <- $http-port
+      protocol: tcp
+      publish: true
+      host-port: <- $host-port
+      description: Published local Mattermost HTTP endpoint used for external verification.
+  connections:
+    postgres:
+      target: mattermost/stack-local-postgres
+      service: postgres
+      description: Private PostgreSQL service connected to the local Mattermost app.
+  depends:
+    wait-for:
+      runnables:
+        - mattermost/stack-local-postgres
+      timeout: 180
+  checks:
+    readiness:
+      code: http-get-service("mattermost/stack-local-app", "http", "/api/v4/system/ping") get-member("status") 200 equal?
+      period: 10
+      initialDelay: 30
+      attempts: 60
+
+stack-local:
+  defines: group
+  metadata:
+    name: Mattermost Local Standalone Stack
+    description: |
+      Local verification flavor of the standalone Mattermost stack. It includes
+      private PostgreSQL and publishes Mattermost on localhost port 18065.
+    tags: mattermost, collaboration, postgresql, stack, local
+    website: https://mattermost.com/
+    source: https://github.com/mattermost/mattermost
+    publisher: monk.io
+    private: false
+  members:
+    - mattermost/stack-local-postgres
+    - mattermost/stack-local-app
+  variables:
+    local-postgres-password:
+      type: string
+      value: mm-local-vfy-0e8c4b2a6d7f4931a5c9e2b4f8d6a013
+      description: Sensitive generated PostgreSQL password used only by the local verification flavor.
