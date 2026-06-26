@@ -18,7 +18,7 @@ base:
   variables:
     mattermost-image-repository:
       type: string
-      value: ngrie/mattermost-team-edition-arm
+      value: mattermost/mattermost-team-edition
       description: Public Mattermost Team Edition image repository. This ARM-compatible repository is used for local verification; amd64 production deployments may override to mattermost/mattermost-team-edition.
     mattermost-image-tag:
       type: string
