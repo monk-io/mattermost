@@ -73,22 +73,37 @@ base:
       env: MM_BLEVESETTINGS_INDEXDIR
       value: /var/lib/mattermost/bleve-indexes
       description: Mattermost local Bleve search index directory.
-    mattermost-volume-name:
-      type: string
-      value: mattermost
-      description: Monk volume subdirectory used for Mattermost persistent data.
   containers:
     mattermost:
       image: <- $mattermost-image-repository
       image-tag: <- $mattermost-image-tag
       restart: unless-stopped
-      paths:
-        - <- `${volume-path}/${mattermost-volume-name}/data:/var/lib/mattermost/data`
-        - <- `${volume-path}/${mattermost-volume-name}/config:/var/lib/mattermost/config`
-        - <- `${volume-path}/${mattermost-volume-name}/logs:/var/lib/mattermost/logs`
-        - <- `${volume-path}/${mattermost-volume-name}/plugins:/var/lib/mattermost/plugins`
-        - <- `${volume-path}/${mattermost-volume-name}/client-plugins:/var/lib/mattermost/client/plugins`
-        - <- `${volume-path}/${mattermost-volume-name}/bleve-indexes:/var/lib/mattermost/bleve-indexes`
+      mounted-volumes:
+        data:
+          path: /var/lib/mattermost/data
+        config:
+          path: /var/lib/mattermost/config
+        logs:
+          path: /var/lib/mattermost/logs
+        plugins:
+          path: /var/lib/mattermost/plugins
+        client-plugins:
+          path: /var/lib/mattermost/client/plugins
+        bleve-indexes:
+          path: /var/lib/mattermost/bleve-indexes
+  volumes:
+    data:
+      kind: local
+    config:
+      kind: local
+    logs:
+      kind: local
+    plugins:
+      kind: local
+    client-plugins:
+      kind: local
+    bleve-indexes:
+      kind: local
   services:
     http:
       container: mattermost

@@ -33,17 +33,17 @@ stack-postgres:
       env: POSTGRES_PASSWORD
       value: <- $global-postgres-password
       description: Sensitive PostgreSQL password supplied by the standalone stack. Production deployments should set secret("mattermost-postgres-password").
-    postgres-volume-name:
-      type: string
-      value: mattermost-stack-postgres-v2
-      description: Monk volume subdirectory used for production stack PostgreSQL data.
   containers:
     postgres:
       image: postgres
       image-tag: <- $postgres-image-tag
       restart: unless-stopped
-      paths:
-        - <- `${volume-path}/${postgres-volume-name}:/var/lib/postgresql/data`
+      mounted-volumes:
+        data:
+          path: /var/lib/postgresql/data
+  volumes:
+    data:
+      kind: local
   services:
     postgres:
       container: postgres
@@ -97,10 +97,6 @@ stack-app:
       type: string
       value: <- $global-postgres-password
       description: Sensitive PostgreSQL password shared with stack PostgreSQL.
-    mattermost-volume-name:
-      type: string
-      value: mattermost-stack-app-v2
-      description: Monk volume subdirectory used for production Mattermost application data.
   services:
     http:
       container: mattermost
@@ -172,10 +168,6 @@ stack-local-postgres:
       env: POSTGRES_PASSWORD
       value: <- $local-postgres-password
       description: Sensitive generated PostgreSQL password used only by the local verification flavor.
-    postgres-volume-name:
-      type: string
-      value: mattermost-local-postgres-v2
-      description: Monk volume subdirectory used for local stack PostgreSQL data.
   checks:
     readiness:
       code: <- `exec("postgres", "pg_isready", "-U", "${postgres-user}", "-d", "${postgres-database}") contains?("accepting connections")`
@@ -222,10 +214,6 @@ stack-local-app:
       type: string
       value: <- $local-postgres-password
       description: Sensitive generated PostgreSQL password shared with local stack PostgreSQL.
-    mattermost-volume-name:
-      type: string
-      value: mattermost-local-app-v2
-      description: Monk volume subdirectory used for local Mattermost application data.
     host-port:
       type: int
       value: 18065
