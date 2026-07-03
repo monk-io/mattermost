@@ -223,6 +223,7 @@ stack-local-app:
       container: mattermost
       port: <- $http-port
       protocol: tcp
+      publish: true
       host-port: <- $host-port
       description: Published local Mattermost HTTP endpoint used for external verification.
   connections:
