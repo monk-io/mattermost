@@ -161,7 +161,7 @@
     "stylelint-config-recommended-scss": "14.1.0",
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.8.1",
-    "svgo": "2.8.2",
+    "svgo": "2.8.4",
     "typescript-eslint-language-service": "5.0.5",
     "webpack-pwa-manifest": "4.3.0",
     "yargs": "17.7.2"
